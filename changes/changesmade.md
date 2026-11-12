@@ -243,3 +243,36 @@ Database version incremented from 1 to 2.
 
 ## Status
 Completed
+
+---
+
+## Date
+2026-11-12
+
+## Task
+Persist diet items, fix Diet screen crash, add dated workout plans, move Diet button to the bottom.
+
+## Files Changed
+- app/src/main/java/com/gymroutine/app/MainActivity.kt
+- app/src/main/java/com/gymroutine/app/data/model/WorkoutModels.kt
+- app/src/main/java/com/gymroutine/app/data/database/GymDatabaseHelper.kt
+- app/src/main/java/com/gymroutine/app/data/repository/GymRepository.kt
+- app/src/main/java/com/gymroutine/app/ui/viewmodel/GymViewModel.kt
+- app/src/main/java/com/gymroutine/app/ui/screens/HomeScreen.kt
+- app/src/main/java/com/gymroutine/app/ui/screens/DietScreen.kt
+- app/src/main/java/com/gymroutine/app/ui/screens/SettingsDialog.kt
+- app/src/main/java/com/gymroutine/app/ui/screens/PlansScreen.kt (new)
+
+## Main Changes
+- Diet items are stored in a new `diet_items` SQLite table (food, quantity, recipe); ids come from the database.
+- New `workout_plans` table: each plan has a start date and optional end date; sections belong to a plan.
+- Home shows the plan whose dates cover the selected day; newest start date wins on overlap.
+- New Workout Plans page: create, rename, change dates, delete, copy workouts, edit a future plan.
+- Checkmarks are saved for the selected day's date and survive routine edits.
+- Diet Plan and Workout Plans buttons moved to a bottom bar.
+
+## Breaking Changes
+Database version 2 -> 3. Existing workouts are migrated into one default plan (no data dropped).
+
+## Status
+Completed

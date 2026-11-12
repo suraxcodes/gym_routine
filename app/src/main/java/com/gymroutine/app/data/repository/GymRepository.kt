@@ -2,6 +2,8 @@ package com.gymroutine.app.data.repository
 
 import com.gymroutine.app.data.database.GymDatabaseHelper
 import com.gymroutine.app.data.model.DayWorkoutPlan
+import com.gymroutine.app.data.model.DietItem
+import com.gymroutine.app.data.model.WorkoutPlan
 import com.gymroutine.app.data.model.WorkoutSection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -18,18 +20,46 @@ class GymRepository(private val dbHelper: GymDatabaseHelper) {
     val dataUpdates: SharedFlow<Unit> = _dataUpdates.asSharedFlow()
 
     fun getTodayDateKey(): String {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         return sdf.format(Date())
     }
 
-    suspend fun getDayWorkoutPlan(dayOfWeek: Int): DayWorkoutPlan = withContext(Dispatchers.IO) {
-        dbHelper.getDayWorkoutPlan(dayOfWeek)
+    // ---- Workout plans (date periods) ----
+
+    suspend fun getPlans(): List<WorkoutPlan> = withContext(Dispatchers.IO) {
+        dbHelper.getPlans()
     }
 
-    suspend fun saveDaySections(dayOfWeek: Int, sections: List<WorkoutSection>) = withContext(Dispatchers.IO) {
-        dbHelper.saveDaySections(dayOfWeek, sections)
+    suspend fun getActivePlan(dateKey: String): WorkoutPlan? = withContext(Dispatchers.IO) {
+        dbHelper.getActivePlan(dateKey)
+    }
+
+    suspend fun savePlan(plan: WorkoutPlan, copyFromPlanId: Long? = null) = withContext(Dispatchers.IO) {
+        val isNew = plan.id <= 0
+        val planId = dbHelper.savePlan(plan)
+        if (isNew && copyFromPlanId != null && planId > 0) {
+            dbHelper.copyPlanContents(copyFromPlanId, planId)
+        }
         _dataUpdates.emit(Unit)
     }
+
+    suspend fun deletePlan(planId: Long) = withContext(Dispatchers.IO) {
+        dbHelper.deletePlan(planId)
+        _dataUpdates.emit(Unit)
+    }
+
+    // ---- Sections + exercises ----
+
+    suspend fun getDayWorkoutPlan(planId: Long, dayOfWeek: Int): DayWorkoutPlan = withContext(Dispatchers.IO) {
+        dbHelper.getDayWorkoutPlan(planId, dayOfWeek)
+    }
+
+    suspend fun saveDaySections(planId: Long, dayOfWeek: Int, sections: List<WorkoutSection>) = withContext(Dispatchers.IO) {
+        dbHelper.saveDaySections(planId, dayOfWeek, sections)
+        _dataUpdates.emit(Unit)
+    }
+
+    // ---- Completions ----
 
     suspend fun getCompletedExerciseIds(dateKey: String): Set<Long> = withContext(Dispatchers.IO) {
         dbHelper.getCompletedExerciseIds(dateKey)
@@ -47,6 +77,22 @@ class GymRepository(private val dbHelper: GymDatabaseHelper) {
 
     suspend fun resetToDefaults() = withContext(Dispatchers.IO) {
         dbHelper.resetToDefaults()
+        _dataUpdates.emit(Unit)
+    }
+
+    // ---- Diet ----
+
+    suspend fun getDietItems(): List<DietItem> = withContext(Dispatchers.IO) {
+        dbHelper.getDietItems()
+    }
+
+    suspend fun saveDietItem(item: DietItem) = withContext(Dispatchers.IO) {
+        dbHelper.saveDietItem(item)
+        _dataUpdates.emit(Unit)
+    }
+
+    suspend fun deleteDietItem(itemId: Long) = withContext(Dispatchers.IO) {
+        dbHelper.deleteDietItem(itemId)
         _dataUpdates.emit(Unit)
     }
 }

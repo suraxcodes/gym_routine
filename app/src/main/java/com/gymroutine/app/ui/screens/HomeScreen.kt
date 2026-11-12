@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Layers
@@ -34,6 +36,7 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -73,8 +76,48 @@ fun HomeScreen(
 
     Scaffold(
         containerColor = BgDark,
+        bottomBar = {
+            // Bottom buttons: Diet Plan + Workout Plans
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(BgDark)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = { navController.navigate("diet") },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElectricLimeSubtle, contentColor = ElectricLime),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Restaurant,
+                        contentDescription = "Diet",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Diet Plan", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+                Button(
+                    onClick = { navController.navigate("plans") },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElectricLimeSubtle, contentColor = ElectricLime),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarMonth,
+                        contentDescription = "Workout Plans",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Workout Plans", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+            }
+        },
         floatingActionButton = {
-            if (!uiState.isSundayRestDay && !uiState.isEditingPlan) {
+            if (!uiState.isSundayRestDay && !uiState.isEditingPlan && uiState.shownPlan != null) {
                 ExtendedFloatingActionButton(
                     onClick = { viewModel.setEditing(true) },
                     containerColor = ElectricLime,
@@ -115,22 +158,56 @@ fun HomeScreen(
                 onDaySelected = { weekday -> viewModel.selectWeekday(weekday) }
             )
 
-            // Diet Plan shortcut button
-            Button(
-                onClick = { navController.navigate("diet") },
-                colors = ButtonDefaults.buttonColors(containerColor = ElectricLimeSubtle, contentColor = ElectricLime),
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Restaurant,
-                    contentDescription = "Diet",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Diet Plan", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            // Which plan is on screen (name + dates), or the "editing a plan" banner
+            val shownPlan = uiState.shownPlan
+            if (uiState.previewPlan != null && shownPlan != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(ElectricLimeSubtle)
+                        .padding(start = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "EDITING PLAN: ${shownPlan.name}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ElectricLime
+                        )
+                        Text(
+                            text = shownPlan.periodLabel,
+                            fontSize = 12.sp,
+                            color = TextSecondary
+                        )
+                    }
+                    TextButton(onClick = { viewModel.stopPlanPreview() }) {
+                        Text("Done", fontWeight = FontWeight.Bold, color = ElectricLime)
+                    }
+                }
+            } else if (shownPlan != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarMonth,
+                        contentDescription = null,
+                        tint = ElectricLime,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = "${shownPlan.name}  •  ${shownPlan.periodLabel}",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        maxLines = 1
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -140,6 +217,55 @@ fun HomeScreen(
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     item {
                         RestDayView()
+                    }
+                }
+            } else if (uiState.shownPlan == null) {
+                // No plan covers this date (the last plan ended and no new one has started)
+                if (!uiState.isLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(SurfaceCard)
+                            .border(1.dp, BorderMuted, RoundedCornerShape(16.dp))
+                            .padding(28.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CalendarMonth,
+                                contentDescription = null,
+                                tint = TextMuted,
+                                modifier = Modifier.size(40.dp)
+                            )
+                            Text(
+                                text = "No workout plan for this date",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextWhite
+                            )
+                            Text(
+                                text = "Your last plan has ended or the next one has not started yet. Create a new plan or change the dates.",
+                                fontSize = 13.sp,
+                                color = TextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Button(
+                                onClick = { navController.navigate("plans") },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = ElectricLime,
+                                    contentColor = BgDark
+                                ),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text(text = "Workout Plans", fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             } else {

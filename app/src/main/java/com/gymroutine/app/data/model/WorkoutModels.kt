@@ -1,6 +1,8 @@
 package com.gymroutine.app.data.model
 
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 
 enum class Weekday(val dayIndex: Int, val shortLabel: String, val fullTitle: String) {
     MONDAY(1, "MON", "Monday"),
@@ -36,7 +38,8 @@ data class DayScheduleItem(
     val dayOfMonth: Int,
     val formattedDate: String,
     val isToday: Boolean,
-    val isSelected: Boolean
+    val isSelected: Boolean,
+    val dateKey: String = ""   // yyyy-MM-dd of this day in the current week
 )
 
 data class Exercise(
@@ -87,3 +90,42 @@ data class SectionWithStatus(
     val section: WorkoutSection,
     val exercisesWithStatus: List<ExerciseWithStatus> = emptyList()
 )
+
+/**
+ * A workout plan that is valid for a period of dates.
+ * Dates are stored as "yyyy-MM-dd". endDate = null means "no end date" (runs until you set one).
+ */
+data class WorkoutPlan(
+    val id: Long = 0,
+    val name: String,
+    val startDate: String,
+    val endDate: String? = null
+) {
+    fun coversDate(dateKey: String): Boolean =
+        startDate <= dateKey && (endDate.isNullOrBlank() || endDate >= dateKey)
+
+    val periodLabel: String
+        get() = if (endDate.isNullOrBlank()) {
+            "From ${prettyDate(startDate)} • no end date"
+        } else {
+            "${prettyDate(startDate)} → ${prettyDate(endDate)}"
+        }
+}
+
+/** One line of the diet page, e.g. name = "Eggs", quantity = "3 daily", recipe = "Boil 10 min". */
+data class DietItem(
+    val id: Long = 0,
+    val name: String,
+    val quantity: String = "",
+    val recipe: String = ""
+)
+
+/** "2026-11-30" -> "30 Nov 2026". Returns the input unchanged if it cannot be parsed. */
+fun prettyDate(dateKey: String): String {
+    return try {
+        val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateKey) ?: return dateKey
+        SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(parsed)
+    } catch (e: Exception) {
+        dateKey
+    }
+}

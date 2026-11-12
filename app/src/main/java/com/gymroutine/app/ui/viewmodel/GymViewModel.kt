@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.gymroutine.app.data.database.GymDatabaseHelper
 import com.gymroutine.app.data.model.DayScheduleItem
 import com.gymroutine.app.data.model.DayWorkoutPlan
+import com.gymroutine.app.data.model.DietItem
 import com.gymroutine.app.data.model.ExerciseWithStatus
 import com.gymroutine.app.data.model.SectionWithStatus
 import com.gymroutine.app.data.model.Weekday
+import com.gymroutine.app.data.model.WorkoutPlan
 import com.gymroutine.app.data.model.WorkoutSection
 import com.gymroutine.app.data.repository.GymRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +27,8 @@ import java.util.Locale
 data class GymUiState(
     val todayWeekday: Weekday = Weekday.MONDAY,
     val selectedWeekday: Weekday = Weekday.MONDAY,
+    val todayDateKey: String = "",
+    val selectedDateKey: String = "",
     val currentFormattedDate: String = "",
     val greeting: String = "Good Day",
     val scheduleItems: List<DayScheduleItem> = emptyList(),
@@ -36,8 +40,24 @@ data class GymUiState(
     val isSundayRestDay: Boolean = false,
     val isEditingPlan: Boolean = false,
     val isSettingsOpen: Boolean = false,
-    val isLoading: Boolean = true
-)
+    val isLoading: Boolean = true,
+
+    // Workout plans with date periods
+    val plans: List<WorkoutPlan> = emptyList(),
+    /** Plan that the calendar gives for the selected day (null = no plan covers that date). */
+    val activePlan: WorkoutPlan? = null,
+    /** Plan that is active on today's real date (used for the "ACTIVE" badge). */
+    val todayPlanId: Long? = null,
+    /** Set while the user is editing a plan picked from the Plans page (it may be a future plan). */
+    val previewPlan: WorkoutPlan? = null,
+
+    // Diet page
+    val dietItems: List<DietItem> = emptyList()
+) {
+    /** The plan whose workouts are on screen right now. */
+    val shownPlan: WorkoutPlan?
+        get() = previewPlan ?: activePlan
+}
 
 class GymViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -71,6 +91,7 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 todayWeekday = todayWeekday,
                 selectedWeekday = todayWeekday,
+                todayDateKey = repository.getTodayDateKey(),
                 currentFormattedDate = formattedDate,
                 greeting = greeting,
                 isSundayRestDay = (todayWeekday == Weekday.SUNDAY)
@@ -79,6 +100,14 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
 
         refreshScheduleItems(todayWeekday, todayWeekday)
         loadDayData(todayWeekday)
+    }
+
+    /** Call when the app comes back to the screen: if the date changed (after midnight), start the new day. */
+    fun onAppResumed() {
+        val state = _uiState.value
+        if (state.todayDateKey.isNotEmpty() && state.todayDateKey != repository.getTodayDateKey()) {
+            initializeToday()
+        }
     }
 
     private fun observeDataChanges() {
@@ -106,6 +135,7 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
 
         val items = mutableListOf<DayScheduleItem>()
         val fullDateFormat = SimpleDateFormat("MMM d", Locale.getDefault())
+        val keyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
         for (weekday in Weekday.entries) {
             val dayOfMonth = calendar.get(Calendar.DAY_OF_MONTH)
@@ -116,13 +146,17 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
                     dayOfMonth = dayOfMonth,
                     formattedDate = formattedDate,
                     isToday = (weekday == today),
-                    isSelected = (weekday == selected)
+                    isSelected = (weekday == selected),
+                    dateKey = keyFormat.format(calendar.time)
                 )
             )
             calendar.add(Calendar.DAY_OF_YEAR, 1)
         }
 
-        _uiState.update { it.copy(scheduleItems = items) }
+        val selectedKey = items.firstOrNull { it.weekday == selected }?.dateKey
+            ?: repository.getTodayDateKey()
+
+        _uiState.update { it.copy(scheduleItems = items, selectedDateKey = selectedKey) }
     }
 
     fun selectWeekday(weekday: Weekday) {
@@ -140,23 +174,42 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun loadDayData(weekday: Weekday) {
         viewModelScope.launch {
-            if (weekday == Weekday.SUNDAY) {
+            val before = _uiState.value
+            val dateKey = before.scheduleItems.firstOrNull { it.weekday == weekday }?.dateKey
+                ?: repository.getTodayDateKey()
+
+            // Lists used by the Plans page and the Diet page
+            val plans = repository.getPlans()
+            val dietItems = repository.getDietItems()
+            val todayPlanId = repository.getActivePlan(repository.getTodayDateKey())?.id
+
+            // Which plan belongs to the selected date?
+            val activePlan = repository.getActivePlan(dateKey)
+            // Keep the preview plan fresh (it may have been renamed or deleted)
+            val previewPlan = before.previewPlan?.let { p -> plans.firstOrNull { it.id == p.id } }
+            val shownPlan = previewPlan ?: activePlan
+
+            if (weekday == Weekday.SUNDAY || shownPlan == null) {
                 _uiState.update {
                     it.copy(
+                        plans = plans,
+                        dietItems = dietItems,
+                        todayPlanId = todayPlanId,
+                        activePlan = activePlan,
+                        previewPlan = previewPlan,
                         currentPlan = null,
                         sectionsWithStatus = emptyList(),
                         completedCount = 0,
                         totalCount = 0,
                         completionPercentage = 0f,
-                        isSundayRestDay = true,
+                        isSundayRestDay = (weekday == Weekday.SUNDAY),
                         isLoading = false
                     )
                 }
                 return@launch
             }
 
-            val dayPlan = repository.getDayWorkoutPlan(weekday.dayIndex)
-            val dateKey = repository.getTodayDateKey()
+            val dayPlan = repository.getDayWorkoutPlan(shownPlan.id, weekday.dayIndex)
             val completedIds = repository.getCompletedExerciseIds(dateKey)
 
             val sectionsWithStatus = dayPlan.sections.map { section ->
@@ -180,6 +233,11 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
 
             _uiState.update {
                 it.copy(
+                    plans = plans,
+                    dietItems = dietItems,
+                    todayPlanId = todayPlanId,
+                    activePlan = activePlan,
+                    previewPlan = previewPlan,
                     currentPlan = dayPlan,
                     sectionsWithStatus = sectionsWithStatus,
                     completedCount = completedExercises,
@@ -192,31 +250,42 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ---- Checkmarks: saved for the date of the day that is selected ----
+
+    private fun selectedDateKey(): String =
+        _uiState.value.selectedDateKey.ifEmpty { repository.getTodayDateKey() }
+
     fun toggleExerciseCompletion(exerciseId: Long, isCompleted: Boolean) {
         viewModelScope.launch {
-            val dateKey = repository.getTodayDateKey()
-            repository.setExerciseCompletion(dateKey, exerciseId, isCompleted)
+            repository.setExerciseCompletion(selectedDateKey(), exerciseId, isCompleted)
         }
     }
 
     fun resetTodayCompletions() {
         viewModelScope.launch {
-            val dateKey = repository.getTodayDateKey()
-            repository.resetDailyCompletions(dateKey)
+            repository.resetDailyCompletions(selectedDateKey())
         }
     }
 
+    // ---- Editing the workouts of one weekday ----
+
     fun saveDaySections(sections: List<WorkoutSection>) {
-        val currentDay = _uiState.value.selectedWeekday
-        if (currentDay == Weekday.SUNDAY) return
+        val state = _uiState.value
+        val currentDay = state.selectedWeekday
+        val plan = state.shownPlan
+        if (currentDay == Weekday.SUNDAY || plan == null) {
+            _uiState.update { it.copy(isEditingPlan = false) }
+            return
+        }
 
         viewModelScope.launch {
-            repository.saveDaySections(currentDay.dayIndex, sections)
+            repository.saveDaySections(plan.id, currentDay.dayIndex, sections)
             _uiState.update { it.copy(isEditingPlan = false) }
         }
     }
 
     fun resetToDefaults() {
+        _uiState.update { it.copy(previewPlan = null) }
         viewModelScope.launch {
             repository.resetToDefaults()
         }
@@ -228,5 +297,49 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSettingsOpen(isOpen: Boolean) {
         _uiState.update { it.copy(isSettingsOpen = isOpen) }
+    }
+
+    // ---- Workout plans (date periods) ----
+
+    /** Create (id == 0) or update a plan. For a new plan, [copyFromPlanId] copies that plan's workouts into it. */
+    fun savePlan(plan: WorkoutPlan, copyFromPlanId: Long? = null) {
+        viewModelScope.launch {
+            repository.savePlan(plan, copyFromPlanId)
+        }
+    }
+
+    fun deletePlan(plan: WorkoutPlan) {
+        if (_uiState.value.previewPlan?.id == plan.id) {
+            _uiState.update { it.copy(previewPlan = null) }
+        }
+        viewModelScope.launch {
+            repository.deletePlan(plan.id)
+        }
+    }
+
+    /** Show this plan on the home screen so its workouts can be edited, even if its dates are in the future. */
+    fun startPlanPreview(plan: WorkoutPlan) {
+        _uiState.update { it.copy(previewPlan = plan) }
+        loadDayData(_uiState.value.selectedWeekday)
+    }
+
+    fun stopPlanPreview() {
+        _uiState.update { it.copy(previewPlan = null) }
+        loadDayData(_uiState.value.selectedWeekday)
+    }
+
+    // ---- Diet ----
+
+    fun saveDietItem(item: DietItem) {
+        if (item.name.isBlank()) return
+        viewModelScope.launch {
+            repository.saveDietItem(item)
+        }
+    }
+
+    fun deleteDietItem(item: DietItem) {
+        viewModelScope.launch {
+            repository.deleteDietItem(item.id)
+        }
     }
 }

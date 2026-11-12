@@ -217,7 +217,7 @@ fun SettingsDialog(
             },
             text = {
                 Text(
-                    text = "This will reset all weekday workout plans (Mon–Sat) to their recommended starter routines. Your previous edits will be overwritten.",
+                    text = "This deletes ALL your workout plans, their workouts and all checkmarks, and creates one fresh starter plan. Your diet plan is kept. This cannot be undone.",
                     color = TextSecondary,
                     fontSize = 14.sp
                 )
