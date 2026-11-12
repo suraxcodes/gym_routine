@@ -17,7 +17,7 @@ class GymDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
 
     companion object {
         const val DATABASE_NAME = "gym_routine.db"
-        const val DATABASE_VERSION = 3
+        const val DATABASE_VERSION = 4
 
         // Table Workout Plans (a plan = a full Mon-Sat routine valid for a date period)
         const val TABLE_PLANS = "workout_plans"
@@ -58,6 +58,12 @@ class GymDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         const val COL_DIET_QUANTITY = "quantity"
         const val COL_DIET_RECIPE = "recipe"
 
+        // Table Day Titles (custom title of one weekday card inside one plan)
+        const val TABLE_DAY_TITLES = "plan_day_titles"
+        const val COL_DT_PLAN_ID = "plan_id"
+        const val COL_DT_DAY = "day_of_week"
+        const val COL_DT_TITLE = "title"
+
         const val DEFAULT_PLAN_NAME = "My Workout Plan"
     }
 
@@ -91,8 +97,22 @@ class GymDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         )
     }
 
+    private fun createDayTitlesTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_DAY_TITLES (
+                $COL_DT_PLAN_ID INTEGER NOT NULL,
+                $COL_DT_DAY INTEGER NOT NULL,
+                $COL_DT_TITLE TEXT NOT NULL,
+                PRIMARY KEY ($COL_DT_PLAN_ID, $COL_DT_DAY)
+            )
+            """.trimIndent()
+        )
+    }
+
     override fun onCreate(db: SQLiteDatabase) {
         createPlansTable(db)
+        createDayTitlesTable(db)
 
         db.execSQL(
             """
@@ -146,6 +166,7 @@ class GymDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
             db.execSQL("DROP TABLE IF EXISTS $TABLE_SECTIONS")
             db.execSQL("DROP TABLE IF EXISTS $TABLE_PLANS")
             db.execSQL("DROP TABLE IF EXISTS $TABLE_DIET")
+            db.execSQL("DROP TABLE IF EXISTS $TABLE_DAY_TITLES")
             onCreate(db)
             return
         }
@@ -159,6 +180,11 @@ class GymDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
             db.execSQL("ALTER TABLE $TABLE_SECTIONS ADD COLUMN $COL_SEC_PLAN_ID INTEGER NOT NULL DEFAULT 0")
             db.execSQL("UPDATE $TABLE_SECTIONS SET $COL_SEC_PLAN_ID = $planId")
             createDietTable(db)
+        }
+
+        if (oldVersion < 4) {
+            // v3 -> v4: only adds the table for custom day titles. Nothing is deleted.
+            createDayTitlesTable(db)
         }
     }
 
@@ -187,6 +213,7 @@ class GymDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
             db.delete(TABLE_EXERCISES, null, null)
             db.delete(TABLE_SECTIONS, null, null)
             db.delete(TABLE_PLANS, null, null)
+            db.delete(TABLE_DAY_TITLES, null, null)
             val planId = insertDefaultPlan(db)
             seedSingleExample(db, planId)
             db.setTransactionSuccessful()
@@ -305,6 +332,7 @@ class GymDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
                 arg
             )
             db.delete(TABLE_SECTIONS, "$COL_SEC_PLAN_ID = ?", arg)
+            db.delete(TABLE_DAY_TITLES, "$COL_DT_PLAN_ID = ?", arg)
             db.delete(TABLE_PLANS, "$COL_PLAN_ID = ?", arg)
             db.setTransactionSuccessful()
         } finally {
@@ -319,6 +347,14 @@ class GymDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         try {
             for (day in 1..7) {
                 val source = getDayWorkoutPlan(fromPlanId, day)
+                if (source.customTitle.isNotBlank()) {
+                    val titleValues = ContentValues().apply {
+                        put(COL_DT_PLAN_ID, toPlanId)
+                        put(COL_DT_DAY, day)
+                        put(COL_DT_TITLE, source.customTitle)
+                    }
+                    db.insertWithOnConflict(TABLE_DAY_TITLES, null, titleValues, SQLiteDatabase.CONFLICT_REPLACE)
+                }
                 source.sections.forEachIndexed { secIndex, section ->
                     val secValues = ContentValues().apply {
                         put(COL_SEC_PLAN_ID, toPlanId)
@@ -409,7 +445,48 @@ class GymDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
             }
         }
 
-        return DayWorkoutPlan(dayOfWeek = dayOfWeek, sections = sections)
+        return DayWorkoutPlan(
+            dayOfWeek = dayOfWeek,
+            sections = sections,
+            customTitle = getDayTitle(planId, dayOfWeek)
+        )
+    }
+
+    // ---------------------------------------------------------------------
+    // Custom title of a weekday card
+    // ---------------------------------------------------------------------
+
+    fun getDayTitle(planId: Long, dayOfWeek: Int): String {
+        val cursor = readableDatabase.query(
+            TABLE_DAY_TITLES,
+            arrayOf(COL_DT_TITLE),
+            "$COL_DT_PLAN_ID = ? AND $COL_DT_DAY = ?",
+            arrayOf(planId.toString(), dayOfWeek.toString()),
+            null, null, null
+        )
+        cursor.use {
+            return if (it.moveToFirst()) it.getString(0) ?: "" else ""
+        }
+    }
+
+    /** Saves the card title of one weekday. A blank title removes it (the app then builds the title from the section names). */
+    fun setDayTitle(planId: Long, dayOfWeek: Int, title: String) {
+        val db = writableDatabase
+        val clean = title.trim()
+        if (clean.isEmpty()) {
+            db.delete(
+                TABLE_DAY_TITLES,
+                "$COL_DT_PLAN_ID = ? AND $COL_DT_DAY = ?",
+                arrayOf(planId.toString(), dayOfWeek.toString())
+            )
+        } else {
+            val values = ContentValues().apply {
+                put(COL_DT_PLAN_ID, planId)
+                put(COL_DT_DAY, dayOfWeek)
+                put(COL_DT_TITLE, clean)
+            }
+            db.insertWithOnConflict(TABLE_DAY_TITLES, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+        }
     }
 
     fun saveDaySections(planId: Long, dayOfWeek: Int, sections: List<WorkoutSection>) {

@@ -59,6 +59,11 @@ class GymRepository(private val dbHelper: GymDatabaseHelper) {
         _dataUpdates.emit(Unit)
     }
 
+    suspend fun setDayTitle(planId: Long, dayOfWeek: Int, title: String) = withContext(Dispatchers.IO) {
+        dbHelper.setDayTitle(planId, dayOfWeek, title)
+        _dataUpdates.emit(Unit)
+    }
+
     // ---- Completions ----
 
     suspend fun getCompletedExerciseIds(dateKey: String): Set<Long> = withContext(Dispatchers.IO) {

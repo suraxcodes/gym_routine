@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +59,7 @@ fun WorkoutHeaderCard(
     progressPercentage: Float,
     onEditClick: () -> Unit,
     onResetTodayClick: () -> Unit,
+    onEditTitleClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val animatedProgress by animateFloatAsState(
@@ -123,19 +125,32 @@ fun WorkoutHeaderCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Workout Sections Title Summary
-            val summaryTitle = if (plan == null || plan.sections.isEmpty()) {
-                "No Workout Scheduled"
-            } else {
-                plan.sections.joinToString(" & ") { it.title }
-            }
+            // Card title: the user's own title if set, otherwise the section names.
+            // Tap it (or the pencil) to change it.
+            val summaryTitle = plan?.displayTitle ?: "No Workout Scheduled"
 
-            Text(
-                text = summaryTitle,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextWhite
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onEditTitleClick),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = summaryTitle,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextWhite,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "Edit title",
+                    tint = TextMuted,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(14.dp))
 

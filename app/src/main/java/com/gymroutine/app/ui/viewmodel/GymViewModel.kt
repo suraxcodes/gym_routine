@@ -284,6 +284,18 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Custom title of the selected day's card. Blank = go back to the automatic title. */
+    fun saveDayTitle(title: String) {
+        val state = _uiState.value
+        val plan = state.shownPlan ?: return
+        val day = state.selectedWeekday
+        if (day == Weekday.SUNDAY) return
+
+        viewModelScope.launch {
+            repository.setDayTitle(plan.id, day.dayIndex, title)
+        }
+    }
+
     fun resetToDefaults() {
         _uiState.update { it.copy(previewPlan = null) }
         viewModelScope.launch {

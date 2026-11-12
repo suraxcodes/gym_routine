@@ -32,14 +32,20 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,6 +59,8 @@ import com.gymroutine.app.ui.components.HomeHeader
 import com.gymroutine.app.ui.components.RestDayView
 import com.gymroutine.app.ui.components.WorkoutHeaderCard
 import com.gymroutine.app.ui.theme.BgDark
+import com.gymroutine.app.ui.theme.BorderHighlight
+import com.gymroutine.app.ui.theme.SurfaceDark
 import com.gymroutine.app.ui.theme.BorderMuted
 import com.gymroutine.app.ui.theme.ElectricLime
 import com.gymroutine.app.ui.theme.ElectricLimeSubtle
@@ -69,6 +77,7 @@ fun HomeScreen(
     navController: androidx.navigation.NavHostController
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showTitleDialog by remember { mutableStateOf(false) }
 
     BackHandler(enabled = uiState.isEditingPlan) {
         viewModel.setEditing(false)
@@ -284,7 +293,8 @@ fun HomeScreen(
                             totalCount = uiState.totalCount,
                             progressPercentage = uiState.completionPercentage,
                             onEditClick = { viewModel.setEditing(true) },
-                            onResetTodayClick = { viewModel.resetTodayCompletions() }
+                            onResetTodayClick = { viewModel.resetTodayCompletions() },
+                            onEditTitleClick = { showTitleDialog = true }
                         )
                     }
 
@@ -443,6 +453,66 @@ fun HomeScreen(
                 viewModel.saveDaySections(sections)
             },
             onCancel = { viewModel.setEditing(false) }
+        )
+    }
+
+    // Dialog: change the title of the selected day's card
+    if (showTitleDialog) {
+        var titleText by remember { mutableStateOf(uiState.currentPlan?.customTitle ?: "") }
+
+        AlertDialog(
+            onDismissRequest = { showTitleDialog = false },
+            containerColor = SurfaceDark,
+            title = {
+                Text(
+                    text = "${uiState.selectedWeekday.fullTitle} title",
+                    color = TextWhite,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = titleText,
+                        onValueChange = { titleText = it },
+                        label = { Text("Card title (e.g. Pull Day)") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextWhite,
+                            unfocusedTextColor = TextWhite,
+                            focusedBorderColor = ElectricLime,
+                            unfocusedBorderColor = BorderHighlight,
+                            focusedLabelColor = ElectricLime,
+                            unfocusedLabelColor = TextMuted,
+                            cursorColor = ElectricLime
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = "Leave it empty to show the section names automatically.",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.saveDayTitle(titleText)
+                        showTitleDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElectricLime, contentColor = BgDark),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Save", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTitleDialog = false }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            }
         )
     }
 

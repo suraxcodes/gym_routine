@@ -69,8 +69,18 @@ data class WorkoutSection(
 
 data class DayWorkoutPlan(
     val dayOfWeek: Int,
-    val sections: List<WorkoutSection> = emptyList()
+    val sections: List<WorkoutSection> = emptyList(),
+    /** Title the user typed for this day's card. Empty = build the title from the section names. */
+    val customTitle: String = ""
 ) {
+    /** What the big card at the top shows. */
+    val displayTitle: String
+        get() = when {
+            customTitle.isNotBlank() -> customTitle
+            sections.isEmpty() -> "No Workout Scheduled"
+            else -> sections.joinToString(" & ") { it.title }
+        }
+
     val totalExercises: Int
         get() = sections.sumOf { it.exerciseCount }
 
